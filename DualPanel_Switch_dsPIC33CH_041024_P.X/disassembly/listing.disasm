@@ -1,0 +1,1519 @@
+Disassembly Listing for TstProj_041024_P
+Generated From:
+C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/dist/default/production/TstProj_041024_P.X.production.elf
+Apr 11, 2024 10:27:55 AM
+
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/traps.c  ------------------------------
+1:                 /**
+2:                   System Traps Generated Driver File 
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     traps.h
+9:                 
+10:                  @Summary:
+11:                    This is the generated driver implementation file for handling traps
+12:                    using PIC24 / dsPIC33 / PIC32MM MCUs
+13:                
+14:                  @Description:
+15:                    This source file provides implementations for PIC24 / dsPIC33 / PIC32MM MCUs traps.
+16:                    Generation Information : 
+17:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+18:                        Device            :  dsPIC33CH512MP506
+19:                    The generated drivers are tested against the following:
+20:                        Compiler          :  XC16 v2.10
+21:                        MPLAB             :  MPLAB X v6.05
+22:                */
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                /**
+46:                    Section: Includes
+47:                */
+48:                #include <xc.h>
+49:                #include "traps.h"
+50:                
+51:                #define ERROR_HANDLER __attribute__((interrupt, no_auto_psv, keep, section("error_handler")))
+52:                #define FAILSAFE_STACK_GUARDSIZE 8
+53:                
+54:                /**
+55:                 * a private place to store the error code if we run into a severe error
+56:                 */
+57:                static uint16_t TRAPS_error_code = -1;
+58:                
+59:                /**
+60:                 * Halts 
+61:                 * 
+62:                 * @param code error code
+63:                 */
+64:                void __attribute__((weak)) TRAPS_halt_on_error(uint16_t code)
+65:                {
+66:                    TRAPS_error_code = code;
+0005D8  888000     MOV W0, 0x1000
+0005DA  37FFFF     BRA 0x5DA
+67:                #ifdef __DEBUG    
+68:                    __builtin_software_breakpoint();
+69:                    /* If we are in debug mode, cause a software breakpoint in the debugger */
+70:                #endif
+71:                    while(1);
+72:                    
+73:                }
+74:                
+75:                /**
+76:                 * Sets the stack pointer to a backup area of memory, in case we run into
+77:                 * a stack error (in which case we can't really trust the stack pointer)
+78:                 */
+79:                inline static void use_failsafe_stack(void)
+80:                {
+81:                    static uint8_t failsafe_stack[32];
+82:                    asm volatile (
+0003BC  210020     MOV #0x1002, W0
+0003BE  780780     MOV W0, W15
+83:                        "   mov    %[pstack], W15\n"
+84:                        :
+85:                        : [pstack]"r"(failsafe_stack)
+86:                    );
+87:                /* Controls where the stack pointer limit is, relative to the end of the
+88:                 * failsafe stack
+89:                 */    
+90:                    SPLIM = (uint16_t)(((uint8_t *)failsafe_stack) + sizeof(failsafe_stack) 
+0003C0  2101A0     MOV #0x101A, W0
+0003C2  880100     MOV W0, SPLIM
+91:                            - FAILSAFE_STACK_GUARDSIZE);
+92:                }
+93:                
+94:                
+95:                /** Oscillator Fail Trap vector**/
+96:                void ERROR_HANDLER _OscillatorFail(void)
+97:                {
+000396  F80036     PUSH RCOUNT
+000398  BE9F80     MOV.D W0, [W15++]
+00039A  BE9F82     MOV.D W2, [W15++]
+00039C  BE9F84     MOV.D W4, [W15++]
+00039E  BE9F86     MOV.D W6, [W15++]
+98:                    INTCON1bits.OSCFAIL = 0;  //Clear the trap flag
+0003A0  A928C0     BCLR INTCON1, #1
+99:                    TRAPS_halt_on_error(TRAPS_OSC_FAIL);
+0003A2  EB0000     CLR W0
+0003A4  070119     RCALL 0x5D8
+100:               }
+0003A6  BE034F     MOV.D [--W15], W6
+0003A8  BE024F     MOV.D [--W15], W4
+0003AA  BE014F     MOV.D [--W15], W2
+0003AC  BE004F     MOV.D [--W15], W0
+0003AE  F90036     POP RCOUNT
+0003B0  064000     RETFIE
+101:               /** Stack Error Trap Vector**/
+102:               void ERROR_HANDLER _StackError(void)
+103:               {
+0003B2  F80036     PUSH RCOUNT
+0003B4  BE9F80     MOV.D W0, [W15++]
+0003B6  BE9F82     MOV.D W2, [W15++]
+0003B8  BE9F84     MOV.D W4, [W15++]
+0003BA  BE9F86     MOV.D W6, [W15++]
+104:                   /* We use a failsafe stack: the presence of a stack-pointer error
+105:                    * means that we cannot trust the stack to operate correctly unless
+106:                    * we set the stack pointer to a safe place.
+107:                    */
+108:                   use_failsafe_stack(); 
+109:                   INTCON1bits.STKERR = 0;  //Clear the trap flag
+0003C4  A948C0     BCLR INTCON1, #2
+110:                   TRAPS_halt_on_error(TRAPS_STACK_ERR);
+0003C6  200010     MOV #0x1, W0
+0003C8  070107     RCALL 0x5D8
+111:               }
+0003CA  BE034F     MOV.D [--W15], W6
+0003CC  BE024F     MOV.D [--W15], W4
+0003CE  BE014F     MOV.D [--W15], W2
+0003D0  BE004F     MOV.D [--W15], W0
+0003D2  F90036     POP RCOUNT
+0003D4  064000     RETFIE
+112:               /** Address error Trap vector**/
+113:               void ERROR_HANDLER _AddressError(void)
+114:               {
+0003D6  F80036     PUSH RCOUNT
+0003D8  BE9F80     MOV.D W0, [W15++]
+0003DA  BE9F82     MOV.D W2, [W15++]
+0003DC  BE9F84     MOV.D W4, [W15++]
+0003DE  BE9F86     MOV.D W6, [W15++]
+115:                   INTCON1bits.ADDRERR = 0;  //Clear the trap flag
+0003E0  A968C0     BCLR INTCON1, #3
+116:                   TRAPS_halt_on_error(TRAPS_ADDRESS_ERR);
+0003E2  200020     MOV #0x2, W0
+0003E4  0700F9     RCALL 0x5D8
+117:               }
+0003E6  BE034F     MOV.D [--W15], W6
+0003E8  BE024F     MOV.D [--W15], W4
+0003EA  BE014F     MOV.D [--W15], W2
+0003EC  BE004F     MOV.D [--W15], W0
+0003EE  F90036     POP RCOUNT
+0003F0  064000     RETFIE
+118:               /** Math Error Trap vector**/
+119:               void ERROR_HANDLER _MathError(void)
+120:               {
+0003F2  F80036     PUSH RCOUNT
+0003F4  BE9F80     MOV.D W0, [W15++]
+0003F6  BE9F82     MOV.D W2, [W15++]
+0003F8  BE9F84     MOV.D W4, [W15++]
+0003FA  BE9F86     MOV.D W6, [W15++]
+121:                   INTCON1bits.MATHERR = 0;  //Clear the trap flag
+0003FC  A988C0     BCLR INTCON1, #4
+122:                   TRAPS_halt_on_error(TRAPS_MATH_ERR);
+0003FE  200030     MOV #0x3, W0
+000400  0700EB     RCALL 0x5D8
+123:               }
+000402  BE034F     MOV.D [--W15], W6
+000404  BE024F     MOV.D [--W15], W4
+000406  BE014F     MOV.D [--W15], W2
+000408  BE004F     MOV.D [--W15], W0
+00040A  F90036     POP RCOUNT
+00040C  064000     RETFIE
+124:               /** Generic Hard Trap vector**/
+125:               void ERROR_HANDLER _HardTrapError(void)
+126:               {
+00040E  F80036     PUSH RCOUNT
+000410  BE9F80     MOV.D W0, [W15++]
+000412  BE9F82     MOV.D W2, [W15++]
+000414  BE9F84     MOV.D W4, [W15++]
+000416  BE9F86     MOV.D W6, [W15++]
+127:                   INTCON4bits.SGHT = 0;  //Clear the trap flag
+000418  A908C6     BCLR INTCON4, #0
+128:                   TRAPS_halt_on_error(TRAPS_HARD_ERR);
+00041A  200070     MOV #0x7, W0
+00041C  0700DD     RCALL 0x5D8
+129:               }
+00041E  BE034F     MOV.D [--W15], W6
+000420  BE024F     MOV.D [--W15], W4
+000422  BE014F     MOV.D [--W15], W2
+000424  BE004F     MOV.D [--W15], W0
+000426  F90036     POP RCOUNT
+000428  064000     RETFIE
+130:               /** Generic Soft Trap vector**/
+131:               void ERROR_HANDLER _SoftTrapError(void)
+132:               {
+00042A  F80036     PUSH RCOUNT
+00042C  BE9F80     MOV.D W0, [W15++]
+00042E  BE9F82     MOV.D W2, [W15++]
+000430  BE9F84     MOV.D W4, [W15++]
+000432  BE9F86     MOV.D W6, [W15++]
+133:                   if(INTCON3bits.NAE)
+000434  AB08C5     BTST 0x8C5, #0
+000436  3A0015     BRA NZ, 0x462
+134:                   {
+135:                     INTCON3bits.NAE = 0;  //Clear the trap flag
+000462  A908C5     BCLR 0x8C5, #0
+136:                     TRAPS_halt_on_error(TRAPS_NVM_ERR);
+000464  2000C0     MOV #0xC, W0
+000466  0700B8     RCALL 0x5D8
+137:                   }
+138:               
+139:               #ifdef _DAE
+140:                   if(INTCON3bits.DAE)
+000438  ABA8C4     BTST INTCON3, #5
+00043A  3A000D     BRA NZ, 0x456
+000468  ABA8C4     BTST INTCON3, #5
+00046A  32FFE8     BRA Z, 0x43C
+00046C  37FFF4     BRA 0x456
+00046E  DA4000     BREAK
+141:                   {
+142:                     INTCON3bits.DAE = 0;  //Clear the trap flag
+000456  A9A8C4     BCLR INTCON3, #5
+143:                     TRAPS_halt_on_error(TRAPS_DAE_ERR);
+000458  200090     MOV #0x9, W0
+00045A  0700BE     RCALL 0x5D8
+144:                   }
+145:               
+146:               #endif
+147:                   if(INTCON3bits.DOOVR)
+00043C  AB88C4     BTST INTCON3, #4
+00043E  3A0007     BRA NZ, 0x44E
+00045C  AB88C4     BTST INTCON3, #4
+00045E  32FFF0     BRA Z, 0x440
+000460  37FFF6     BRA 0x44E
+148:                   {
+149:                     INTCON3bits.DOOVR = 0;  //Clear the trap flag
+00044E  A988C4     BCLR INTCON3, #4
+150:                     TRAPS_halt_on_error(TRAPS_DOOVR_ERR);
+000450  2000A0     MOV #0xA, W0
+000452  0700C2     RCALL 0x5D8
+000454  37FFF5     BRA 0x440
+151:                   }
+152:               
+153:                   if(INTCON3bits.APLL)
+000440  AB08C4     BTST INTCON3, #0
+000442  3A0001     BRA NZ, 0x446
+000444  37FFFF     BRA 0x444
+154:                   {
+155:                     INTCON3bits.APLL = 0;  //Clear the trap flag
+000446  A908C4     BCLR INTCON3, #0
+156:                     TRAPS_halt_on_error(TRAPS_APLL_ERR);
+000448  2000B0     MOV #0xB, W0
+00044A  0700C6     RCALL 0x5D8
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+00044C  37FFFB     BRA 0x444
+157:                   }
+158:               
+159:                   while(1);
+160:               }
+161:               
+162:               
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/system.h  -----------------------------
+1:                 /**
+2:                   @Generated PIC24 / dsPIC33 / PIC32MM MCUs Source File
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     system.h
+9:                 
+10:                  @Summary:
+11:                    This is the system.h file generated using PIC24 / dsPIC33 / PIC32MM MCUs
+12:                
+13:                  @Description:
+14:                    This header file provides implementations for driver APIs for all modules selected in the GUI.
+15:                    Generation Information :
+16:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+17:                        Device            :  dsPIC33CH512MP506
+18:                    The generated drivers are tested against the following:
+19:                        Compiler          :  XC16 v2.10
+20:                        MPLAB             :  MPLAB X v6.05
+21:                */
+22:                
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                #ifndef _XTAL_FREQ
+46:                #define _XTAL_FREQ  180000000UL
+47:                #endif
+48:                #define WDT_CLR_KEY 0x5743
+49:                
+50:                #include "xc.h"
+51:                #include "stdint.h"
+52:                #include "system_types.h"
+53:                
+54:                #ifndef SYSTEM_H
+55:                #define	SYSTEM_H
+56:                /**
+57:                 * Initializes the CPU core control register.
+58:                 * @example
+59:                 * <code>
+60:                 * SYSTEM_CORCONInitialize();
+61:                 * </code>
+62:                 */
+63:                inline static void SYSTEM_CORCONInitialize()
+64:                {
+65:                    CORCON = (CORCON & 0x00F2) | CORCON_MODE_PORVALUES;    // POR value
+66:                }
+67:                
+68:                /**
+69:                 * Sets the CPU core control register operating mode to a value that is decided by the
+70:                 * SYSTEM_CORCON_MODES argument.
+71:                 * @param modeValue SYSTEM_CORCON_MODES initialization mode specifier
+72:                 * @example
+73:                 * <code>
+74:                 * SYSTEM_CORCONModeOperatingSet(CORCON_MODE_ENABLEALLSATNORMAL_ROUNDUNBIASED);
+75:                 * </code>
+76:                 */
+77:                inline static void SYSTEM_CORCONModeOperatingSet(SYSTEM_CORCON_MODES modeValue)
+78:                {
+79:                    CORCON = (CORCON & 0x00F2) | modeValue;
+0005BE  200F20     MOV #0xF2, W0
+0005C0  B60044     AND CORCON, WREG
+0005C2  A05000     BSET W0, #5
+0005C4  880220     MOV W0, CORCON
+80:                }
+81:                
+82:                /**
+83:                 * Sets the value of CPU core control register.
+84:                 * @param value value that needs to be written to the CPU core control register
+85:                 * @example
+86:                 * <code>
+87:                 *  SYSTEM_CORCONRegisterValueSet(0x00E2);
+88:                 * </code>
+89:                 */
+90:                inline static void SYSTEM_CORCONRegisterValueSet(uint16_t value)
+91:                {
+92:                    CORCON = value;
+93:                }
+94:                
+95:                /**
+96:                 * Gets the value of CPU core control register.
+97:                 * @return value of the CPU core control register
+98:                 * @example
+99:                 * <code>
+100:                * corconSave = SYSTEM_CORCONRegisterValueGet();
+101:                * </code>
+102:                */
+103:               inline static uint16_t SYSTEM_CORCONRegisterValueGet(void)
+104:               {    
+105:                   return CORCON;
+106:               }
+107:               
+108:               
+109:               /**
+110:                * Gets the base address of the DEVID register for the currently selected device
+111:                * @return base address of the DEVID register
+112:                * @example
+113:                * <code>
+114:                * uint32_t devIdAddress;
+115:                * devIdAddress = SYSTEM_DeviceIdRegisterAddressGet();
+116:                * </code>
+117:                */
+118:               inline static uint32_t SYSTEM_DeviceIdRegisterAddressGet(void)
+119:               {
+120:                   return __DEVID_BASE;
+121:               }
+122:               
+123:               /**
+124:                * @Param
+125:                   none
+126:                * @Returns
+127:                   none
+128:                * @Description
+129:                   Initializes the device to the default states configured in the
+130:                *                  MCC GUI
+131:                * @Example
+132:                   SYSTEM_Initialize(void);
+133:                */
+134:               void SYSTEM_Initialize(void);
+135:               #endif	/* SYSTEM_H */
+136:               /**
+137:                End of File
+138:               */
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/system.c  -----------------------------
+1:                 /**
+2:                   @Generated PIC24 / dsPIC33 / PIC32MM MCUs Source File
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     system.h
+9:                 
+10:                  @Summary:
+11:                    This is the sysetm.h file generated using PIC24 / dsPIC33 / PIC32MM MCUs
+12:                
+13:                  @Description:
+14:                    This header file provides implementations for driver APIs for all modules selected in the GUI.
+15:                    Generation Information :
+16:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+17:                        Device            :  dsPIC33CH512MP506
+18:                    The generated drivers are tested against the following:
+19:                        Compiler          :  XC16 v2.10
+20:                        MPLAB             :  MPLAB X v6.05
+21:                */
+22:                
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                // Configuration bits: selected in the GUI
+46:                
+47:                // FSEC
+48:                #pragma config BWRP = OFF    //Boot Segment Write-Protect bit->Boot Segment may be written
+49:                #pragma config BSS = DISABLED    //Boot Segment Code-Protect Level bits->No Protection (other than BWRP)
+50:                #pragma config BSEN = OFF    //Boot Segment Control bit->No Boot Segment
+51:                #pragma config GWRP = OFF    //General Segment Write-Protect bit->General Segment may be written
+52:                #pragma config GSS = DISABLED    //General Segment Code-Protect Level bits->No Protection (other than GWRP)
+53:                #pragma config CWRP = OFF    //Configuration Segment Write-Protect bit->Configuration Segment may be written
+54:                #pragma config CSS = DISABLED    //Configuration Segment Code-Protect Level bits->No Protection (other than CWRP)
+55:                #pragma config AIVTDIS = OFF    //Alternate Interrupt Vector Table bit->Disabled AIVT
+56:                
+57:                // FBSLIM
+58:                #pragma config BSLIM = 8191    //Boot Segment Flash Page Address Limit bits->8191
+59:                
+60:                // FOSCSEL
+61:                #pragma config FNOSC = FRC    //Oscillator Source Selection->FRC
+62:                #pragma config IESO = OFF    //Two-speed Oscillator Start-up Enable bit->Start up with user-selected oscillator source
+63:                
+64:                // FOSC
+65:                #pragma config POSCMD = NONE    //Primary Oscillator Mode Select bits->Primary Oscillator disabled
+66:                #pragma config OSCIOFNC = OFF    //OSC2 Pin Function bit->OSC2 is clock output
+67:                #pragma config FCKSM = CSECMD    //Clock Switching Mode bits->Clock switching is enabled,Fail-safe Clock Monitor is disabled
+68:                #pragma config PLLKEN = PLLKEN_ON    //PLL Lock Status Control->PLL lock signal will be used to disable PLL clock output if lock is lost
+69:                #pragma config XTCFG = G3    //XT Config->24-32 MHz crystals
+70:                #pragma config XTBST = ENABLE    //XT Boost->Boost the kick-start
+71:                
+72:                // FWDT
+73:                #pragma config RWDTPS = PS1    //Run Mode Watchdog Timer Post Scaler select bits->1:1
+74:                #pragma config RCLKSEL = LPRC    //Watchdog Timer Clock Select bits->Always use LPRC
+75:                #pragma config WINDIS = OFF    //Watchdog Timer Window Enable bit->Watchdog Timer in Window mode
+76:                #pragma config WDTWIN = WIN25    //Watchdog Timer Window Select bits->WDT Window is 25% of WDT period
+77:                #pragma config SWDTPS = PS1    //Sleep Mode Watchdog Timer Post Scaler select bits->1:1
+78:                #pragma config FWDTEN = ON_SW    //Watchdog Timer Enable bit->WDT controlled via SW, use WDTCON.ON bit
+79:                
+80:                // FPOR
+81:                #pragma config BISTDIS = DISABLED    //Memory BIST Feature Disable->mBIST on reset feature disabled
+82:                
+83:                // FICD
+84:                #pragma config ICS = PGD2    //ICD Communication Channel Select bits->Communicate on PGC2 and PGD2
+85:                #pragma config JTAGEN = OFF    //JTAG Enable bit->JTAG is disabled
+86:                #pragma config NOBTSWP = ON    //BOOTSWP instruction disable bit->BOOTSWP instruction is enabled
+87:                
+88:                // FDMTIVTL
+89:                #pragma config DMTIVTL = 0    //Dead Man Timer Interval low word->0
+90:                
+91:                // FDMTIVTH
+92:                #pragma config DMTIVTH = 0    //Dead Man Timer Interval high word->0
+93:                
+94:                // FDMTCNTL
+95:                #pragma config DMTCNTL = 0    //Lower 16 bits of 32 bit DMT instruction count time-out value (0-0xFFFF)->0
+96:                
+97:                // FDMTCNTH
+98:                #pragma config DMTCNTH = 0    //Upper 16 bits of 32 bit DMT instruction count time-out value (0-0xFFFF)->0
+99:                
+100:               // FDMT
+101:               #pragma config DMTDIS = OFF    //Dead Man Timer Disable bit->Dead Man Timer is Disabled and can be enabled by software
+102:               
+103:               // FDEVOPT
+104:               #pragma config ALTI2C1 = OFF    //Alternate I2C1 Pin bit->I2C1 mapped to SDA1/SCL1 pins
+105:               #pragma config ALTI2C2 = OFF    //Alternate I2C2 Pin bit->I2C2 mapped to SDA2/SCL2 pins
+106:               #pragma config SMBEN = SMBUS    //SM Bus Enable->SMBus input threshold is enabled
+107:               #pragma config SPI2PIN = PPS    //SPI2 Pin Select bit->SPI2 uses I/O remap (PPS) pins
+108:               
+109:               // FALTREG
+110:               #pragma config CTXT1 = OFF    //Specifies Interrupt Priority Level (IPL) Associated to Alternate Working Register 1 bits->Not Assigned
+111:               #pragma config CTXT2 = OFF    //Specifies Interrupt Priority Level (IPL) Associated to Alternate Working Register 2 bits->Not Assigned
+112:               #pragma config CTXT3 = OFF    //Specifies Interrupt Priority Level (IPL) Associated to Alternate Working Register 3 bits->Not Assigned
+113:               #pragma config CTXT4 = OFF    //Specifies Interrupt Priority Level (IPL) Associated to Alternate Working Register 4 bits->Not Assigned
+114:               
+115:               // FCFGPRA0
+116:               #pragma config CPRA0 = MSTR    //Pin RA0 Ownership Bits->Main core owns pin.
+117:               #pragma config CPRA1 = MSTR    //Pin RA1 Ownership Bits->Main core owns pin.
+118:               #pragma config CPRA2 = MSTR    //Pin RA2 Ownership Bits->Main core owns pin.
+119:               #pragma config CPRA3 = MSTR    //Pin RA3 Ownership Bits->Main core owns pin.
+120:               #pragma config CPRA4 = MSTR    //Pin RA4 Ownership Bits->Main core owns pin.
+121:               
+122:               // FCFGPRB0
+123:               #pragma config CPRB0 = MSTR    //Pin RB0 Ownership Bits->Main core owns pin.
+124:               #pragma config CPRB1 = MSTR    //Pin RB1 Ownership Bits->Main core owns pin.
+125:               #pragma config CPRB2 = MSTR    //Pin RB2 Ownership Bits->Main core owns pin.
+126:               #pragma config CPRB3 = MSTR    //Pin RB3 Ownership Bits->Main core owns pin.
+127:               #pragma config CPRB4 = MSTR    //Pin RB4 Ownership Bits->Main core owns pin.
+128:               #pragma config CPRB5 = MSTR    //Pin RB5 Ownership Bits->Main core owns pin.
+129:               #pragma config CPRB6 = MSTR    //Pin RB6 Ownership Bits->Main core owns pin.
+130:               #pragma config CPRB7 = MSTR    //Pin RB7 Ownership Bits->Main core owns pin.
+131:               #pragma config CPRB8 = MSTR    //Pin RB8 Ownership Bits->Main core owns pin.
+132:               #pragma config CPRB9 = MSTR    //Pin RB9 Ownership Bits->Main core owns pin.
+133:               #pragma config CPRB10 = MSTR    //Pin RB10 Ownership Bits->Main core owns pin.
+134:               #pragma config CPRB11 = MSTR    //Pin RB11 Ownership Bits->Main core owns pin.
+135:               #pragma config CPRB12 = MSTR    //Pin RB12 Ownership Bits->Main core owns pin.
+136:               #pragma config CPRB13 = MSTR    //Pin RB13 Ownership Bits->Main core owns pin.
+137:               #pragma config CPRB14 = MSTR    //Pin RB14 Ownership Bits->Main core owns pin.
+138:               #pragma config CPRB15 = MSTR    //Pin RB15 Ownership Bits->Main core owns pin.
+139:               
+140:               // FCFGPRC0
+141:               #pragma config CPRC0 = MSTR    //Pin RC0 Ownership Bits->Main core owns pin.
+142:               #pragma config CPRC1 = MSTR    //Pin RC1 Ownership Bits->Main core owns pin.
+143:               #pragma config CPRC2 = MSTR    //Pin RC2 Ownership Bits->Main core owns pin.
+144:               #pragma config CPRC3 = MSTR    //Pin RC3 Ownership Bits->Main core owns pin.
+145:               #pragma config CPRC4 = MSTR    //Pin RC4 Ownership Bits->Main core owns pin.
+146:               #pragma config CPRC5 = MSTR    //Pin RC5 Ownership Bits->Main core owns pin.
+147:               #pragma config CPRC6 = MSTR    //Pin RC6 Ownership Bits->Main core owns pin.
+148:               #pragma config CPRC7 = MSTR    //Pin RC7 Ownership Bits->Main core owns pin.
+149:               #pragma config CPRC8 = MSTR    //Pin RC8 Ownership Bits->Main core owns pin.
+150:               #pragma config CPRC9 = MSTR    //Pin RC9 Ownership Bits->Main core owns pin.
+151:               #pragma config CPRC10 = MSTR    //Pin RC10 Ownership Bits->Main core owns pin.
+152:               #pragma config CPRC11 = MSTR    //Pin RC11 Ownership Bits->Main core owns pin.
+153:               #pragma config CPRC12 = MSTR    //Pin RC12 Ownership Bits->Main core owns pin.
+154:               #pragma config CPRC13 = MSTR    //Pin RC13 Ownership Bits->Main core owns pin.
+155:               #pragma config CPRC14 = MSTR    //Pin RC14 Ownership Bits->Main core owns pin.
+156:               #pragma config CPRC15 = MSTR    //Pin RC15 Ownership Bits->Main core owns pin.
+157:               
+158:               // FCFGPRD0
+159:               #pragma config CPRD0 = MSTR    //Pin RD0 Ownership Bits->Main core owns pin.
+160:               #pragma config CPRD1 = MSTR    //Pin RD1 Ownership Bits->Main core owns pin.
+161:               #pragma config CPRD2 = MSTR    //Pin RD2 Ownership Bits->Main core owns pin.
+162:               #pragma config CPRD3 = MSTR    //Pin RD3 Ownership Bits->Main core owns pin.
+163:               #pragma config CPRD4 = MSTR    //Pin RD4 Ownership Bits->Main core owns pin.
+164:               #pragma config CPRD5 = MSTR    //Pin RD5 Ownership Bits->Main core owns pin.
+165:               #pragma config CPRD6 = MSTR    //Pin RD6 Ownership Bits->Main core owns pin.
+166:               #pragma config CPRD7 = MSTR    //Pin RD7 Ownership Bits->Main core owns pin.
+167:               #pragma config CPRD8 = MSTR    //Pin RD8 Ownership Bits->Main core owns pin.
+168:               #pragma config CPRD9 = MSTR    //Pin RD9 Ownership Bits->Main core owns pin.
+169:               #pragma config CPRD10 = MSTR    //Pin RD10 Ownership Bits->Main core owns pin.
+170:               #pragma config CPRD11 = MSTR    //Pin RD11 Ownership Bits->Main core owns pin.
+171:               #pragma config CPRD12 = MSTR    //Pin RD12 Ownership Bits->Main core owns pin.
+172:               #pragma config CPRD13 = MSTR    //Pin RD13 Ownership Bits->Main core owns pin.
+173:               #pragma config CPRD14 = MSTR    //Pin RD14 Ownership Bits->Main core owns pin.
+174:               #pragma config CPRD15 = MSTR    //Pin RD15 Ownership Bits->Main core owns pin.
+175:               
+176:               // FCFGPRE0
+177:               #pragma config CPRE0 = MSTR    //Pin RE0 Ownership Bits->Main core owns pin.
+178:               #pragma config CPRE1 = MSTR    //Pin RE1 Ownership Bits->Main core owns pin.
+179:               #pragma config CPRE2 = MSTR    //Pin RE2 Ownership Bits->Main core owns pin.
+180:               #pragma config CPRE3 = MSTR    //Pin RE3 Ownership Bits->Main core owns pin.
+181:               #pragma config CPRE4 = MSTR    //Pin RE4 Ownership Bits->Main core owns pin.
+182:               #pragma config CPRE5 = MSTR    //Pin RE5 Ownership Bits->Main core owns pin.
+183:               #pragma config CPRE6 = MSTR    //Pin RE6 Ownership Bits->Main core owns pin.
+184:               #pragma config CPRE7 = MSTR    //Pin RE7 Ownership Bits->Main core owns pin.
+185:               #pragma config CPRE8 = MSTR    //Pin RE8 Ownership Bits->Main core owns pin.
+186:               #pragma config CPRE9 = MSTR    //Pin RE9 Ownership Bits->Main core owns pin.
+187:               #pragma config CPRE10 = MSTR    //Pin RE10 Ownership Bits->Main core owns pin.
+188:               #pragma config CPRE11 = MSTR    //Pin RE11 Ownership Bits->Main core owns pin.
+189:               #pragma config CPRE12 = MSTR    //Pin RE12 Ownership Bits->Main core owns pin.
+190:               #pragma config CPRE13 = MSTR    //Pin RE13 Ownership Bits->Main core owns pin.
+191:               #pragma config CPRE14 = MSTR    //Pin RE14 Ownership Bits->Main core owns pin.
+192:               #pragma config CPRE15 = MSTR    //Pin RE15 Ownership Bits->Main core owns pin.
+193:               
+194:               // FBTSEQ
+195:               #pragma config BSEQ = 4095    //Relative value defining which partition will be active after devie Reset; the partition containing a lower boot number will be active.->4095
+196:               #pragma config IBSEQ = 4095    //The one's complement of BSEQ; must be calculated by the user and written during device programming.->4095
+197:               
+198:               // FBOOT
+199:               #pragma config BTMODE = DUAL    //Device Boot Mode Configuration->Device is in Dual Partition mode
+200:               
+201:               #include "pin_manager.h"
+202:               #include "clock.h"
+203:               #include "system.h"
+204:               #include "system_types.h"
+205:               #include "interrupt_manager.h"
+206:               #include "traps.h"
+207:               
+208:               void SYSTEM_Initialize(void)
+209:               {
+210:                   PIN_MANAGER_Initialize();
+0005B2  07FFB8     RCALL 0x524
+211:                   INTERRUPT_Initialize();
+0005B4  070013     RCALL 0x5DC
+212:                   CLOCK_Initialize();
+0005B6  07FF5E     RCALL 0x474
+213:                   INTERRUPT_GlobalEnable();
+214:                   SYSTEM_CORCONModeOperatingSet(CORCON_MODE_PORVALUES);
+215:               }
+0005C6  060000     RETURN
+216:               
+217:               /**
+218:                End of File
+219:               */
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/reset.c  ------------------------------
+1:                 /**
+2:                   RESET Generated Driver File
+3:                 
+4:                   @Company
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name
+8:                     reset.c
+9:                 
+10:                  @Summary
+11:                    This is the generated driver implementation file for the RESET driver using PIC24 / dsPIC33 / PIC32MM MCUs
+12:                
+13:                  @Description
+14:                    This header file provides implementations for driver APIs for RESET.
+15:                    Generation Information :
+16:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+17:                        Device            :  dsPIC33CH512MP506
+18:                    The generated drivers are tested against the following:
+19:                        Compiler          :  XC16 v2.10
+20:                        MPLAB             :  MPLAB X v6.05
+21:                */
+22:                
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                #include <stdbool.h>
+46:                #include <stdint.h>
+47:                #include "xc.h"
+48:                #include "reset.h"
+49:                
+50:                /**
+51:                 Section: Local Variables
+52:                */
+53:                
+54:                /**
+55:                 Section: Function prototypes
+56:                */
+57:                static bool RESET_CauseFromSoftware(uint16_t resetCause);
+58:                static bool RESET_CauseFromWatchdogTimer(uint16_t resetCause);
+59:                static bool RESET_CauseFromConfigurationMismatch(uint16_t resetCause);
+60:                static bool RESET_CauseFromIllegalOpcode(uint16_t resetCause);
+61:                static bool RESET_CauseFromExternal(uint16_t resetCause);
+62:                static bool RESET_CauseFromTrap(uint16_t resetCause);
+63:                static void RESET_CauseClear(RESET_MASKS resetFlagMask);
+64:                
+65:                uint16_t RESET_GetCause(void)
+66:                {
+67:                    return RCON;
+000562  807C00     MOV RCON, W0
+000566  807C00     MOV RCON, W0
+68:                }
+000564  060000     RETURN
+69:                
+70:                void __attribute__ ((weak)) RESET_CauseHandler(void)
+71:                {
+72:                    uint16_t resetCause = RESET_GetCause();
+73:                    if(RESET_CauseFromTrap(resetCause))
+74:                    { 
+75:                      RESET_CauseClear(RESET_MASK_TRAPR); 
+76:                      //Do something 
+77:                    }
+78:                    if(RESET_CauseFromIllegalOpcode(resetCause))
+79:                    { 
+80:                      RESET_CauseClear(RESET_MASK_IOPUWR); 
+81:                      //Do something 
+82:                    }
+83:                    if(RESET_CauseFromConfigurationMismatch(resetCause))
+84:                    { 
+85:                      RESET_CauseClear(RESET_MASK_CM); 
+86:                      //Do something 
+87:                    }
+88:                    if(RESET_CauseFromExternal(resetCause))
+89:                    { 
+90:                      RESET_CauseClear(RESET_MASK_EXTR); 
+91:                      //Do something 
+92:                    }
+93:                    if(RESET_CauseFromSoftware(resetCause))
+94:                    { 
+95:                      RESET_CauseClear(RESET_MASK_SWR); 
+96:                      //Do something 
+97:                    }
+98:                    if(RESET_CauseFromWatchdogTimer(resetCause))
+99:                    { 
+100:                     RESET_CauseClear(RESET_MASK_WDTO); 
+101:                     //Do something 
+102:                   }
+103:               }
+104:               
+105:               static bool RESET_CauseFromTrap(uint16_t resetCause)
+106:               {
+107:                   bool resetStatus = false;
+108:                   if(resetCause & RESET_MASK_TRAPR)
+000568  E00000     CP0 W0
+000568  E00000     CP0 W0
+109:                   { 
+110:                     resetStatus = true; 
+111:                   }
+112:                   return resetStatus;
+113:               }
+114:               
+115:               static bool RESET_CauseFromIllegalOpcode(uint16_t resetCause)
+116:               {
+117:                   bool resetStatus = false;
+118:                   if(resetCause & RESET_MASK_IOPUWR)
+00056C  A3E800     BTST.Z W0, #14
+119:                   { 
+120:                     resetStatus = true; 
+121:                   }
+122:                   return resetStatus;
+123:               }
+124:               
+125:               static bool RESET_CauseFromConfigurationMismatch(uint16_t resetCause)
+126:               {
+127:                   bool resetStatus = false;
+128:                   if(resetCause & RESET_MASK_CM)
+000572  A39800     BTST.Z W0, #9
+000572  A39800     BTST.Z W0, #9
+129:                   { 
+130:                     resetStatus = true; 
+131:                   }
+132:                   return resetStatus;
+133:               }
+134:               
+135:               static bool RESET_CauseFromExternal(uint16_t resetCause)
+136:               {
+137:                   bool resetStatus = false;
+138:                   if(resetCause & RESET_MASK_EXTR)
+000578  A37800     BTST.Z W0, #7
+00057A  320001     BRA Z, 0x57E
+139:                   { 
+140:                     resetStatus = true; 
+141:                   }
+142:                   return resetStatus;
+143:               }
+144:               
+145:               static bool RESET_CauseFromSoftware(uint16_t resetCause)
+146:               {
+147:                   bool resetStatus = false;
+148:                   if(resetCause & RESET_MASK_SWR)
+00057E  A36800     BTST.Z W0, #6
+000580  320001     BRA Z, 0x584
+149:                   { 
+150:                     resetStatus = true; 
+151:                   }
+152:                   return resetStatus;
+153:               }
+154:               
+155:               static bool RESET_CauseFromWatchdogTimer(uint16_t resetCause)
+156:               {
+157:                   bool resetStatus = false;
+158:                   if(resetCause & RESET_MASK_WDTO)
+000584  A34800     BTST.Z W0, #4
+000586  3A0001     BRA NZ, 0x58A
+000588  060000     RETURN
+159:                   { 
+160:                     resetStatus = true;
+161:                   }
+162:                   return resetStatus;
+163:               }
+164:               
+165:               static void RESET_CauseClear(RESET_MASKS resetFlagMask)
+166:               { 
+167:                    RCON = RCON & (~resetFlagMask); 
+000570  A9CF81     BCLR 0xF81, #6
+000576  A92F81     BCLR 0xF81, #1
+00057C  A9EF80     BCLR RCON, #7
+000582  A9CF80     BCLR RCON, #6
+00058A  A98F80     BCLR RCON, #4
+00058C  060000     RETURN
+00058E  A9EF81     BCLR 0xF81, #7
+000590  37FFED     BRA 0x56C
+168:               } 
+169:               
+170:               void RESET_CauseClearAll()
+171:               { 
+172:                   RCON = 0x00; 
+000592  EF2F80     CLR RCON
+173:               }
+000594  060000     RETURN
+174:               /**
+175:                End of File
+176:               */
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/pin_manager.c  ------------------------
+1:                 /**
+2:                   PIN MANAGER Generated Driver File
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     pin_manager.c
+9:                 
+10:                  @Summary:
+11:                    This is the generated manager file for the PIC24 / dsPIC33 / PIC32MM MCUs device.  This manager
+12:                    configures the pins direction, initial state, analog setting.
+13:                    The peripheral pin select, PPS, configuration is also handled by this manager.
+14:                
+15:                  @Description:
+16:                    This source file provides implementations for PIN MANAGER.
+17:                    Generation Information :
+18:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+19:                        Device            :  dsPIC33CH512MP506
+20:                    The generated drivers are tested against the following:
+21:                        Compiler          :  XC16 v2.10
+22:                        MPLAB 	          :  MPLAB X v6.05
+23:                */
+24:                
+25:                /*
+26:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+27:                    software and any derivatives exclusively with Microchip products.
+28:                
+29:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+30:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+31:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+32:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+33:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+34:                
+35:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+36:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+37:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+38:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+39:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+40:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+41:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+42:                
+43:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+44:                    TERMS.
+45:                */
+46:                
+47:                
+48:                /**
+49:                    Section: Includes
+50:                */
+51:                
+52:                #include <xc.h>
+53:                #include <stdio.h>
+54:                #include "pin_manager.h"
+55:                
+56:                /**
+57:                 Section: Driver Interface Function Definitions
+58:                */
+59:                void PIN_MANAGER_Initialize (void)
+60:                {
+61:                    /****************************************************************************
+62:                     * Setting the Output Latch SFR(s)
+63:                     ***************************************************************************/
+64:                    LATA = 0x0000;
+000524  EF2E06     CLR GPIOA.LATA
+65:                    LATB = 0x0000;
+000526  EF2E22     CLR GPIOB.LATB
+66:                    LATC = 0x0000;
+000528  EF2E3E     CLR GPIOC.LATC
+67:                    LATD = 0x0000;
+00052A  EF2E5A     CLR GPIOD.LATD
+68:                
+69:                    /****************************************************************************
+70:                     * Setting the GPIO Direction SFR(s)
+71:                     ***************************************************************************/
+72:                    TRISA = 0x001F;
+00052C  2001F0     MOV #0x1F, W0
+00052E  887010     MOV W0, GPIOA.TRISA
+73:                    TRISB = 0xFFFD;
+000530  2FFFD1     MOV #0xFFFD, W1
+000532  8870F1     MOV W1, GPIOB.TRISB
+74:                    TRISC = 0xFFFF;
+000534  EFAE3A     SETM GPIOC.TRISC
+75:                    TRISD = 0xFFF3;
+000536  2FFF31     MOV #0xFFF3, W1
+000538  8872B1     MOV W1, GPIOD.TRISD
+76:                
+77:                    /****************************************************************************
+78:                     * Setting the Weak Pull Up and Weak Pull Down SFR(s)
+79:                     ***************************************************************************/
+80:                    CNPDA = 0x0000;
+00053A  EF2E0C     CLR CNPDA
+81:                    CNPDB = 0x0000;
+00053C  EF2E28     CLR CNPDB
+82:                    CNPDC = 0x0000;
+00053E  EF2E44     CLR CNPDC
+83:                    CNPDD = 0x0000;
+000540  EF2E60     CLR CNPDD
+84:                    CNPUA = 0x0000;
+000542  EF2E0A     CLR CNPUA
+85:                    CNPUB = 0x0000;
+000544  EF2E26     CLR CNPUB
+86:                    CNPUC = 0x0000;
+000546  EF2E42     CLR CNPUC
+87:                    CNPUD = 0x0000;
+000548  EF2E5E     CLR CNPUD
+88:                
+89:                    /****************************************************************************
+90:                     * Setting the Open Drain SFR(s)
+91:                     ***************************************************************************/
+92:                    ODCA = 0x0000;
+00054A  EF2E08     CLR GPIOA.ODCA
+93:                    ODCB = 0x0000;
+00054C  EF2E24     CLR GPIOB.ODCB
+94:                    ODCC = 0x0000;
+00054E  EF2E40     CLR GPIOC.ODCC
+95:                    ODCD = 0x0000;
+000550  EF2E5C     CLR GPIOD.ODCD
+96:                
+97:                    /****************************************************************************
+98:                     * Setting the Analog/Digital Configuration SFR(s)
+99:                     ***************************************************************************/
+100:                   ANSELA = 0x001F;
+000552  887000     MOV W0, ANSELA
+101:                   ANSELB = 0x0385;
+000554  203850     MOV #0x385, W0
+000556  8870E0     MOV W0, ANSELB
+102:                   ANSELC = 0x00CF;
+000558  200CF0     MOV #0xCF, W0
+00055A  8871C0     MOV W0, ANSELC
+103:                   ANSELD = 0x7C00;
+00055C  27C000     MOV #0x7C00, W0
+00055E  8872A0     MOV W0, ANSELD
+104:               }
+000560  060000     RETURN
+105:               
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/interrupt_manager.h  ------------------
+1:                 /**
+2:                   System Interrupts Generated Driver File 
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     interrupt_manager.h
+9:                 
+10:                  @Summary:
+11:                    This is the generated driver implementation file for setting up the
+12:                    interrupts using PIC24 / dsPIC33 / PIC32MM MCUs
+13:                
+14:                  @Description:
+15:                    This source file provides implementations for PIC24 / dsPIC33 / PIC32MM MCUs interrupts.
+16:                    Generation Information : 
+17:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+18:                        Device            :  dsPIC33CH512MP506
+19:                    The generated drivers are tested against the following:
+20:                        Compiler          :  XC16 v2.10
+21:                        MPLAB             :  MPLAB X v6.05
+22:                */
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                #ifndef _INTERRUPT_MANAGER_H
+46:                #define _INTERRUPT_MANAGER_H
+47:                
+48:                /**
+49:                  @Summary
+50:                    Initializes the interrupt priorities of the dsPIC33CH512MP506
+51:                
+52:                  @Description
+53:                    This routine sets the interrupt priorities of the modules that have been configured
+54:                    for the dsPIC33CH512MP506
+55:                
+56:                  @Preconditions
+57:                    None.
+58:                
+59:                  @Returns
+60:                    None.
+61:                
+62:                  @Param
+63:                    None.
+64:                
+65:                  @Example
+66:                    <code>
+67:                    void SYSTEM_Initialize(void)
+68:                    {
+69:                        // Other initializers are called from this function
+70:                        INTERRUPT_Initialize ();
+71:                    }
+72:                    </code>
+73:                
+74:                */
+75:                void INTERRUPT_Initialize(void);
+76:                
+77:                /**
+78:                  @Summary
+79:                    Enables global interrupts of the dsPIC33CH512MP506
+80:                
+81:                  @Description
+82:                    This routine enables the global interrupt bit for the dsPIC33CH512MP506
+83:                
+84:                  @Preconditions
+85:                    None.
+86:                
+87:                  @Returns
+88:                    None.
+89:                
+90:                  @Param
+91:                    None.
+92:                
+93:                  @Example
+94:                    <code>
+95:                    void SYSTEM_Initialize(void)
+96:                    {
+97:                        // Other initializers are called from this function
+98:                        INTERRUPT_GlobalEnable ();
+99:                    }
+100:                   </code>
+101:               
+102:               */
+103:               inline static void INTERRUPT_GlobalEnable(void)
+104:               {
+105:                   __builtin_enable_interrupts();
+0005B8  A8E8C3     BSET 0x8C3, #7
+0005BA  000000     NOP
+0005BC  000000     NOP
+106:               }
+107:               
+108:               /**
+109:                 @Summary
+110:                   Disables global interrupts of the dsPIC33CH512MP506
+111:               
+112:                 @Description
+113:                   This routine disables the global interrupt bit for the dsPIC33CH512MP506
+114:               
+115:                 @Preconditions
+116:                   None.
+117:               
+118:                 @Returns
+119:                   None.
+120:               
+121:                 @Param
+122:                   None.
+123:               
+124:                 @Example
+125:                   <code>
+126:                   void SYSTEM_Initialize(void)
+127:                   {
+128:                       // Other initializers are called from this function
+129:                       INTERRUPT_GlobalDisable ();
+130:                   }
+131:                   </code>
+132:               
+133:               */
+134:               inline static void INTERRUPT_GlobalDisable(void)
+135:               {
+136:                   __builtin_disable_interrupts();
+137:               }
+138:               
+139:               /**
+140:                 @Summary
+141:                   Returns the interrupt vector number of the interrupt which is pending.
+142:               
+143:                 @Description
+144:                   This routine returns the interrupt vector number of the interrupt which is pending.
+145:               
+146:                 @Preconditions
+147:                   None.
+148:               
+149:                 @Returns
+150:                   None.
+151:               
+152:                 @Param
+153:                   None.
+154:               
+155:                 @Example
+156:                   <code>
+157:                       uint16_t ivrNum;
+158:                       ivrNum = INTERRUPT_VectorNumberGet();
+159:                   </code>
+160:               
+161:               */
+162:               inline static uint16_t INTERRUPT_VectorNumberGet(void)
+163:               {
+164:                   return _VECNUM; 
+165:               }
+166:               
+167:               #endif
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/interrupt_manager.c  ------------------
+1:                 /**
+2:                   System Interrupts Generated Driver File 
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     interrupt_manager.h
+9:                 
+10:                  @Summary:
+11:                    This is the generated driver implementation file for setting up the
+12:                    interrupts using PIC24 / dsPIC33 / PIC32MM MCUs
+13:                
+14:                  @Description:
+15:                    This source file provides implementations for PIC24 / dsPIC33 / PIC32MM MCUs interrupts.
+16:                    Generation Information : 
+17:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+18:                        Device            :  dsPIC33CH512MP506
+19:                    The generated drivers are tested against the following:
+20:                        Compiler          :  XC16 v2.10
+21:                        MPLAB             :  MPLAB X v6.05
+22:                */
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                /**
+46:                    Section: Includes
+47:                */
+48:                #include <xc.h>
+49:                
+50:                /**
+51:                    void INTERRUPT_Initialize (void)
+52:                */
+53:                void INTERRUPT_Initialize (void)
+54:                {
+55:                }
+0005DC  060000     RETURN
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/mcc_generated_files/clock.c  ------------------------------
+1:                 /**
+2:                   @Generated PIC24 / dsPIC33 / PIC32MM MCUs Source File
+3:                 
+4:                   @Company:
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name:
+8:                     clock.c
+9:                 
+10:                  @Summary:
+11:                    This is the clock.c file generated using PIC24 / dsPIC33 / PIC32MM MCUs
+12:                
+13:                  @Description:
+14:                    This header file provides implementations for driver APIs for all modules selected in the GUI.
+15:                    Generation Information :
+16:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+17:                        Device            :  dsPIC33CH512MP506
+18:                    The generated drivers are tested against the following:
+19:                        Compiler          :  XC16 v2.10
+20:                        MPLAB             :  MPLAB X v6.05
+21:                */
+22:                
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                #include <stdint.h>
+46:                #include "xc.h"
+47:                #include "clock.h"
+48:                
+49:                void CLOCK_Initialize(void)
+50:                {
+51:                    // FRCDIV FRC/1; PLLPRE 1; DOZE 1:8; DOZEN disabled; ROI disabled; 
+52:                    CLKDIV = 0x3001;
+000474  230010     MOV #0x3001, W0
+000476  887C30     MOV W0, CLKDIV
+53:                    // PLLFBDIV 180; 
+54:                    PLLFBD = 0xB4;
+000478  200B40     MOV #0xB4, W0
+00047A  887C40     MOV W0, PLLFBD
+55:                    // TUN Center frequency; 
+56:                    OSCTUN = 0x00;
+00047C  EF2F8C     CLR OSCTUN
+57:                    // POST1DIV 1:2; VCODIV FVCO/4; POST2DIV 1:2; 
+58:                    PLLDIV = 0x22;
+00047E  200220     MOV #0x22, W0
+000480  887C50     MOV W0, PLLDIV
+59:                    // APLLEN disabled; FRCSEL FRC; APLLPRE 1:1; 
+60:                    ACLKCON1 = 0x101;
+000482  201010     MOV #0x101, W0
+000484  887C70     MOV W0, ACLKCON1
+61:                    // APLLFBDIV 150; 
+62:                    APLLFBD1 = 0x96;
+000486  200960     MOV #0x96, W0
+000488  887C80     MOV W0, APLLFBD1
+63:                    // APOST1DIV 1:4; APOST2DIV 1:1; AVCODIV FVCO/4; 
+64:                    APLLDIV1 = 0x41;
+00048A  200410     MOV #0x41, W0
+00048C  887C90     MOV W0, APLLDIV1
+65:                    // CANCLKEN disabled; CANCLKSEL No Clock Selected; CANCLKDIV Divide by 1; 
+66:                    CANCLKCON = 0x00;
+00048E  EF2F9A     CLR CANCLKCON
+67:                    // ROEN disabled; ROSWEN disabled; ROSLP disabled; ROSEL FOSC; ROOUT disabled; ROSIDL disabled; 
+68:                    REFOCONL = 0x00;
+000490  EF2FB8     CLR REFOCONL
+69:                    // RODIV 0; 
+70:                    REFOCONH = 0x00;
+000492  EF2FBA     CLR REFOCONH
+71:                    // ROTRIM 0; 
+72:                    REFOTRIMH = 0x00;
+000494  EF2FBE     CLR REFOTRIMH
+73:                    // IOLOCK disabled; 
+74:                    RPCON = 0x00;
+000496  EF2D00     CLR RPCON
+75:                    // ADC1MD enabled; T1MD enabled; U2MD enabled; U1MD enabled; SPI2MD enabled; SPI1MD enabled; QEIMD enabled; C1MD enabled; PWMMD enabled; I2C1MD enabled; 
+76:                    PMD1 = 0x00;
+000498  EF2FA4     CLR PMD1
+77:                    // CCP2MD enabled; CCP1MD enabled; CCP4MD enabled; CCP3MD enabled; CCP7MD enabled; CCP8MD enabled; CCP5MD enabled; CCP6MD enabled; 
+78:                    PMD2 = 0x00;
+00049A  EF2FA6     CLR PMD2
+79:                    // CRCMD enabled; I2C2MD enabled; 
+80:                    PMD3 = 0x00;
+00049C  EF2FA8     CLR PMD3
+81:                    // REFOMD enabled; 
+82:                    PMD4 = 0x00;
+00049E  EF2FAA     CLR PMD4
+83:                    // DMA5MD enabled; DMA1MD enabled; DMA2MD enabled; DMA3MD enabled; DMA4MD enabled; DMA0MD enabled; 
+84:                    PMD6 = 0x00;
+0004A0  EF2FAE     CLR PMD6
+85:                    // PTGMD enabled; CMP1MD enabled; 
+86:                    PMD7 = 0x00;
+0004A2  EF2FB0     CLR PMD7
+87:                    // DMTMD enabled; CLC3MD enabled; BIASMD enabled; CLC4MD enabled; SENT2MD enabled; SENT1MD enabled; CLC1MD enabled; CLC2MD enabled; 
+88:                    PMD8 = 0x00;
+0004A4  EF2FB2     CLR PMD8
+89:                    // CF no clock failure; NOSC FRCPLL; CLKLOCK unlocked; OSWEN Switch is Complete; 
+90:                    __builtin_write_OSCCONH((uint8_t) (0x01));
+0004A6  200010     MOV #0x1, W0
+0004A8  2009A2     MOV #0x9A, W2
+0004AA  200781     MOV #0x78, W1
+0004AC  20F853     MOV #0xF85, W3
+0004AE  784981     MOV.B W1, [W3]
+0004B0  784982     MOV.B W2, [W3]
+0004B2  784980     MOV.B W0, [W3]
+91:                    __builtin_write_OSCCONL((uint8_t) (0x01));
+0004B4  200572     MOV #0x57, W2
+0004B6  200461     MOV #0x46, W1
+0004B8  20F843     MOV #0xF84, W3
+0004BA  784981     MOV.B W1, [W3]
+0004BC  784982     MOV.B W2, [W3]
+0004BE  784980     MOV.B W0, [W3]
+92:                    // Wait for Clock switch to occur
+93:                    while (OSCCONbits.OSWEN != 0);
+0004C0  AB0F84     BTST OSCCON, #0
+0004C2  3AFFFE     BRA NZ, 0x4C0
+94:                    while (OSCCONbits.LOCK != 1);
+0004C4  ABAF84     BTST OSCCON, #5
+0004C6  32FFFE     BRA Z, 0x4C4
+95:                }
+0004C8  060000     RETURN
+96:                
+97:                bool CLOCK_AuxPllLockStatusGet()
+98:                {
+99:                    return ACLKCON1bits.APLLCK;
+0004CA  0AA0EE     BFEXT #0xe, #0x1, ACLKCON1, W0
+0004CC  000F8E     NOP
+100:               }
+0004CE  060000     RETURN
+---  C:/Cust_Tests/CH_Dual/TstProj_041024_P.X/main.c  ---------------------------------------------------
+1:                 /**
+2:                   Generated main.c file from MPLAB Code Configurator
+3:                 
+4:                   @Company
+5:                     Microchip Technology Inc.
+6:                 
+7:                   @File Name
+8:                     main.c
+9:                 
+10:                  @Summary
+11:                    This is the generated main.c using PIC24 / dsPIC33 / PIC32MM MCUs.
+12:                
+13:                  @Description
+14:                    This source file provides main entry point for system initialization and application code development.
+15:                    Generation Information :
+16:                        Product Revision  :  PIC24 / dsPIC33 / PIC32MM MCUs - 1.171.4
+17:                        Device            :  dsPIC33CH512MP506
+18:                    The generated drivers are tested against the following:
+19:                        Compiler          :  XC16 v2.10
+20:                        MPLAB 	          :  MPLAB X v6.05
+21:                */
+22:                
+23:                /*
+24:                    (c) 2020 Microchip Technology Inc. and its subsidiaries. You may use this
+25:                    software and any derivatives exclusively with Microchip products.
+26:                
+27:                    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+28:                    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+29:                    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+30:                    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
+31:                    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
+32:                
+33:                    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+34:                    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+35:                    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+36:                    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+37:                    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+38:                    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+39:                    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+40:                
+41:                    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
+42:                    TERMS.
+43:                */
+44:                
+45:                /**
+46:                  Section: Included Files
+47:                */
+48:                #include "mcc_generated_files/system.h"
+49:                
+50:                #include "mcc_generated_files/system.h"
+51:                #define FCY 90000000UL              // Define instruction clock rate for delay routine //should be here!
+52:                #include <libpic30.h>               //For delay function definition
+53:                
+54:                #define MACRO_PARTITIONSWAP() __asm__ volatile(" bclr INTCON2, #15 \n"  \
+55:                                                               " nop    \n"             \
+56:                                                               " nop    \n"             \
+57:                                                               " clr W0 \n"             \
+58:                                                               " mov #0x0055, W1 \n"    \
+59:                                                               " mov W1, NVMKEY  \n"    \
+60:                                                               " mov #0x00AA, W1 \n"    \
+61:                                                               " mov W1, NVMKEY  \n"    \
+62:                                                               " bootswp  \n"           \
+63:                                                               " call W0"  : : : "w0", "w1", "memory", "cc")  
+64:                
+65:                /*
+66:                                         Main application
+67:                 */
+68:                void chk_key_input();
+69:                
+70:                int main(void)
+71:                {
+72:                    // initialize the device
+73:                    SYSTEM_Initialize();
+000504  070056     RCALL 0x5B2
+74:                    while (1)
+75:                    {
+76:                        // Add your application code
+77:                        //_LATD3 = ~_LATD3;
+78:                        Nop();
+000506  000000     NOP
+000514  000000     NOP
+79:                        Nop();
+000508  000000     NOP
+000516  000000     NOP
+80:                        __builtin_btg(&LATD,3);
+00050A  AA6E5A     BTG GPIOD.LATD, #3
+000518  AA6E5A     BTG GPIOD.LATD, #3
+81:                         __delay_us(1);
+00050C  2005A0     MOV #0x5A, W0
+00050E  200001     MOV #0x0, W1
+000510  070042     RCALL 0x596
+00051A  2005A0     MOV #0x5A, W0
+00051C  200001     MOV #0x0, W1
+00051E  07003B     RCALL 0x596
+82:                        chk_key_input();
+000512  07FFDE     RCALL 0x4D0
+000520  07FFD7     RCALL 0x4D0
+000522  37FFF1     BRA 0x506
+83:                    }
+84:                    return 1; 
+85:                }
+86:                
+87:                void chk_key_input(){
+88:                    if (_RB13==0){ //key input for swap partition
+0004D0  ABAE21     BTST 0xE21, #5
+0004D2  320001     BRA Z, 0x4D6
+0004D4  060000     RETURN
+89:                        __delay_ms(500); //wait until key debounce finsihed 
+0004D6  2A5400     MOV #0xA540, W0
+0004D8  202AE1     MOV #0x2AE, W1
+0004DA  07005D     RCALL 0x596
+90:                        while (_RB13==0); //waiting for release
+0004DC  220001     MOV #0x2000, W1
+0004DE  807102     MOV GPIOB.PORTB, W2
+0004E0  608002     AND W1, W2, W0
+0004E2  32FFFD     BRA Z, 0x4DE
+91:                        __delay_ms(500); //wait until key debounce finsihed 
+0004E4  2A5400     MOV #0xA540, W0
+0004E6  202AE1     MOV #0x2AE, W1
+0004E8  070056     RCALL 0x596
+92:                        MACRO_PARTITIONSWAP();
+0004EA  A9E8C3     BCLR 0x8C3, #7
+0004EC  000000     NOP
+0004EE  000000     NOP
+0004F0  EB0000     CLR W0
+0004F2  200551     MOV #0x55, W1
+0004F4  8846B1     MOV W1, NVMKEY
+0004F6  200AA1     MOV #0xAA, W1
+0004F8  8846B1     MOV W1, NVMKEY
+0004FA  FE2000     BOOTSWP
+0004FC  010000     CALL W0
+93:                        Nop();
+0004FE  000000     NOP
+94:                        Nop();
+000500  000000     NOP
+000502  060000     RETURN
+95:                    }
+96:                }    
+97:                /**
+98:                 End of File
+99:                */
+100:               
