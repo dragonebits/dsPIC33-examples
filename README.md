@@ -13,3 +13,5 @@ The third example uses dsPIC33CH device in dual partition mode. It will copy a f
 The forth example use DMA channels to move ADC0 and ADC1 average values to the PWM1 period and duty registers. The ADC interrupt triggers need to be enabled for DMA but the the overall ADC interrupts would be disabled by IEC bits.  The purpose of using DMA is to avoid reading the ADC result buffer randomly by user program. otherwise, the incorrect result may be reported.
 
 The fifth example is using structure in Flash area and how to access specific address in Flash area.
+
+The sixth example is dsPIC33CH switching between dual panels.
