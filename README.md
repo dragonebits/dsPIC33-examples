@@ -15,3 +15,5 @@ The forth example use DMA channels to move ADC0 and ADC1 average values to the P
 The fifth example is using structure in Flash area and how to access specific address in Flash area.
 
 The sixth example is dsPIC33CH switching between dual panels.
+
+The seventh example is switching between dual panels of slave core PRAM of dsPIC33CH128MP506
